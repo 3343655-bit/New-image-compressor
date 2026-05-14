@@ -330,8 +330,9 @@
   <!-- Upload Area -->
   <div class="upload-area">
     <div class="input-tabs">
-      <button class="tab-btn active" onclick="switchTab('upload')">上傳檔案</button>
-      <button class="tab-btn" onclick="switchTab('url')">貼上圖片網址</button>
+      <button class="tab-btn active" onclick="switchTab('upload')">上傳圖片</button>
+      <button class="tab-btn" onclick="switchTab('pdf')">PDF 轉圖片</button>
+      <button class="tab-btn" onclick="switchTab('url')">貼上網址</button>
     </div>
 
     <div id="tab-upload" class="tab-content active">
@@ -343,6 +344,35 @@
       </div>
     </div>
 
+    <!-- PDF tab -->
+    <div id="tab-pdf" class="tab-content">
+      <div class="url-note">上傳 PDF 檔案，每一頁將自動轉為圖片並加入壓縮佇列。<br>Word 文件請先另存為 PDF，再上傳此處。</div>
+      <div class="drop-zone" id="pdfDropZone" style="margin-top:0">
+        <input type="file" id="pdfInput" accept="application/pdf" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" />
+        <span class="drop-icon">📄</span>
+        <div class="drop-title">拖拉 PDF 至此，或點擊選取</div>
+        <div class="drop-sub">支援多頁 PDF，每頁單獨轉為圖片</div>
+      </div>
+      <div id="pdfStatus" style="display:none;margin-top:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="spinner"></div>
+          <span id="pdfStatusText" style="font-size:11px;color:#f0c040;letter-spacing:0.06em"></span>
+        </div>
+        <div class="op-bar" style="margin-top:8px"><div id="pdfFill" class="op-fill"></div></div>
+      </div>
+      <!-- PDF DPI setting -->
+      <div style="margin-top:16px;display:flex;align-items:center;gap:16px">
+        <span class="control-label" style="width:auto;color:#666;font-size:10px;letter-spacing:0.1em">轉換解析度</span>
+        <div class="unit-buttons">
+          <button class="unit-btn active" id="dpi-150" onclick="setPdfDpi(150)">150 DPI</button>
+          <button class="unit-btn" id="dpi-200" onclick="setPdfDpi(200)">200 DPI</button>
+          <button class="unit-btn" id="dpi-300" onclick="setPdfDpi(300)">300 DPI</button>
+        </div>
+        <span style="font-size:10px;color:#444">高 DPI 較清晰但檔案較大</span>
+      </div>
+    </div>
+
+    <!-- URL tab -->
     <div id="tab-url" class="tab-content">
       <div class="url-note">
         貼上任何公開圖片網址（需支援 CORS）。可用
@@ -356,9 +386,9 @@
       <div id="urlError" class="url-error" style="display:none"></div>
       <div class="demo-row">
         <span class="demo-label">示範圖片：</span>
-        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&q=90','風景.jpg',0)">風景</button>
-        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1200&q=90','城市.jpg',0)">城市</button>
-        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=1200&q=90','人像.jpg',0)">人像</button>
+        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&q=90','風景.jpg')">風景</button>
+        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1200&q=90','城市.jpg')">城市</button>
+        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=1200&q=90','人像.jpg')">人像</button>
       </div>
     </div>
   </div>
@@ -451,15 +481,18 @@
   <div class="empty-state" id="emptyState">尚未加入任何圖片</div>
 </div>
 
+<!-- PDF.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 // ── State ──────────────────────────────────────────────
-let queue = [];        // { id, file, sourceUrl, name, originalSize }
-let results = [];      // { id, name, originalUrl, originalSize, compressedBlob, compressedUrl, compressedSize, width, height }
+let queue = [];
+let results = [];
 let format = 'image/jpeg';
 let targetEnabled = false;
 let targetUnit = 'KB';
 let running = false;
 let estimateTimer = null;
+let pdfDpi = 150;
 
 // ── Helpers ────────────────────────────────────────────
 function formatBytes(b) {
@@ -480,11 +513,83 @@ function uid() { return Math.random().toString(36).slice(2); }
 
 // ── Tab switch ─────────────────────────────────────────
 function switchTab(tab) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => {
-    b.classList.toggle('active', (i===0 && tab==='upload') || (i===1 && tab==='url'));
-  });
-  document.getElementById('tab-upload').classList.toggle('active', tab==='upload');
-  document.getElementById('tab-url').classList.toggle('active', tab==='url');
+  const tabs = ['upload','pdf','url'];
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', tabs[i]===tab));
+  tabs.forEach(t => document.getElementById('tab-'+t).classList.toggle('active', t===tab));
+}
+
+// ── PDF conversion ─────────────────────────────────────
+function setPdfDpi(dpi) {
+  pdfDpi = dpi;
+  [150,200,300].forEach(d => document.getElementById('dpi-'+d).classList.toggle('active', d===dpi));
+}
+
+document.getElementById('pdfInput').addEventListener('change', e => {
+  if (e.target.files[0]) convertPdf(e.target.files[0]);
+  e.target.value = '';
+});
+
+const pdfDrop = document.getElementById('pdfDropZone');
+pdfDrop.addEventListener('dragover', e => { e.preventDefault(); pdfDrop.classList.add('dragging'); });
+pdfDrop.addEventListener('dragleave', () => pdfDrop.classList.remove('dragging'));
+pdfDrop.addEventListener('drop', e => {
+  e.preventDefault(); pdfDrop.classList.remove('dragging');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type === 'application/pdf') convertPdf(file);
+});
+
+async function convertPdf(file) {
+  const statusEl = document.getElementById('pdfStatus');
+  const statusText = document.getElementById('pdfStatusText');
+  const fillEl = document.getElementById('pdfFill');
+  statusEl.style.display = 'block';
+  statusText.textContent = '載入 PDF…';
+  fillEl.style.width = '0%';
+
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const total = pdf.numPages;
+    const scale = pdfDpi / 72;
+    const baseName = file.name.replace(/\.pdf$/i, '');
+
+    for (let pageNum = 1; pageNum <= total; pageNum++) {
+      statusText.textContent = `轉換第 ${pageNum} / ${total} 頁…`;
+      fillEl.style.width = `${((pageNum-1)/total)*100}%`;
+
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport }).promise;
+
+      await new Promise(resolve => {
+        canvas.toBlob(blob => {
+          const sourceUrl = URL.createObjectURL(blob);
+          addToQueue({
+            id: uid(),
+            sourceUrl,
+            name: total > 1 ? `${baseName}_p${pageNum}.jpg` : `${baseName}.jpg`,
+            originalSize: blob.size
+          });
+          resolve();
+        }, 'image/jpeg', 0.95);
+      });
+
+      fillEl.style.width = `${(pageNum/total)*100}%`;
+    }
+
+    statusText.textContent = `✓ 已載入 ${total} 頁`;
+    setTimeout(() => { statusEl.style.display = 'none'; }, 2000);
+  } catch (err) {
+    statusText.textContent = '⚠ PDF 載入失敗：' + err.message;
+    setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+  }
 }
 
 // ── File input / drop ──────────────────────────────────
