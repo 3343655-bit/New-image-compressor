@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>IMAGE COMPRESSOR</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0a0a0a; color: #e8e3d8; font-family: 'DM Mono', monospace; min-height: 100vh; }
+
+  .bg-grid {
+    position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(255,220,100,0.03) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,220,100,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .bg-glow {
+    position: fixed; width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(255,200,50,0.06) 0%, transparent 70%);
+    top: -200px; right: -100px; pointer-events: none; z-index: 0;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 48px 24px; position: relative; z-index: 1; }
+
+  /* Header */
+  .header { margin-bottom: 40px; }
+  .label-tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: #f0c040; border: 1px solid rgba(240,192,64,0.3); padding: 4px 10px; margin-bottom: 16px;
+  }
+  .dot { width: 5px; height: 5px; background: #f0c040; border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  h1 { font-family:'Syne',sans-serif; font-size: clamp(32px,5vw,56px); font-weight:800; line-height:1; letter-spacing:-0.02em; }
+  h1 span { color: #f0c040; }
+  .subtitle { font-size:12px; color:#666; margin-top:10px; letter-spacing:0.05em; }
+
+  /* Upload area */
+  .upload-area { border: 1px solid rgba(255,255,255,0.06); margin-bottom: 28px; }
+  .input-tabs { display:flex; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .tab-btn {
+    padding: 10px 20px; font-size:11px; font-family:'DM Mono',monospace; letter-spacing:0.1em;
+    background:transparent; border:none; color:#555; cursor:pointer; transition:all 0.15s;
+    border-bottom: 2px solid transparent; margin-bottom:-1px;
+  }
+  .tab-btn.active { color:#f0c040; border-bottom-color:#f0c040; }
+  .tab-btn:hover:not(.active) { color:#888; }
+
+  .tab-content { display:none; padding:20px; }
+  .tab-content.active { display:block; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 1px dashed rgba(240,192,64,0.3); background:rgba(255,255,255,0.02);
+    padding: 48px 40px; text-align:center; cursor:pointer; transition:all 0.2s; position:relative;
+  }
+  .drop-zone:hover, .drop-zone.dragging { border-color:#f0c040; background:rgba(240,192,64,0.04); }
+  .drop-icon { font-size:36px; margin-bottom:12px; display:block; }
+  .drop-title { font-family:'Syne',sans-serif; font-size:16px; font-weight:600; color:#e8e3d8; margin-bottom:6px; }
+  .drop-sub { font-size:11px; color:#555; letter-spacing:0.05em; }
+  #fileInput { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+
+  /* URL tab */
+  .url-note { font-size:10px; color:#555; letter-spacing:0.06em; margin-bottom:14px; line-height:1.7; }
+  .url-note a { color:#f0c040; }
+  .url-input-row { display:flex; gap:8px; }
+  .url-input {
+    flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+    color:#e8e3d8; font-family:'DM Mono',monospace; font-size:12px; padding:9px 14px; outline:none; transition:border-color 0.15s;
+  }
+  .url-input:focus { border-color:rgba(240,192,64,0.5); }
+  .url-input::placeholder { color:#444; }
+  .btn-secondary {
+    padding:9px 18px; background:rgba(255,255,255,0.06); color:#aaa;
+    font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.08em;
+    border:1px solid rgba(255,255,255,0.1); cursor:pointer; transition:all 0.15s; white-space:nowrap;
+  }
+  .btn-secondary:hover:not(:disabled) { background:rgba(255,255,255,0.1); color:#e8e3d8; }
+  .btn-secondary:disabled { opacity:0.4; cursor:not-allowed; }
+  .url-error { font-size:10px; color:#e05555; margin-top:8px; }
+  .demo-row { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; align-items:center; }
+  .demo-label { font-size:10px; color:#444; letter-spacing:0.1em; }
+  .demo-chip {
+    font-size:10px; font-family:'DM Mono',monospace; padding:4px 10px;
+    border:1px solid rgba(255,255,255,0.08); color:#666; background:transparent;
+    cursor:pointer; transition:all 0.15s;
+  }
+  .demo-chip:hover { border-color:rgba(240,192,64,0.4); color:#f0c040; }
+
+  /* Queue */
+  .queue-section { margin-bottom:28px; display:none; }
+  .queue-section.visible { display:block; }
+  .section-title { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#555; margin-bottom:12px; }
+  .queue-list { display:flex; flex-direction:column; gap:8px; }
+  .queue-item {
+    display:flex; align-items:center; gap:12px; padding:10px 14px;
+    background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06);
+  }
+  .queue-thumb { width:48px; height:36px; object-fit:cover; background:rgba(0,0,0,0.3); flex-shrink:0; }
+  .queue-info { flex:1; min-width:0; }
+  .queue-name { font-size:11px; color:#aaa; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .queue-size { font-size:10px; color:#555; margin-top:2px; }
+  .queue-remove {
+    padding:4px 10px; background:transparent; border:1px solid rgba(255,255,255,0.06);
+    color:#555; font-family:'DM Mono',monospace; font-size:10px; cursor:pointer; transition:all 0.15s;
+  }
+  .queue-remove:hover { border-color:#e05; color:#e05; }
+
+  /* Controls */
+  .controls { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); padding:24px; margin-bottom:28px; }
+  .controls-title { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:#666; margin-bottom:20px; }
+  .control-row { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+  .control-label { font-size:11px; color:#999; width:90px; flex-shrink:0; letter-spacing:0.05em; }
+  .slider-wrap { flex:1; }
+  input[type=range] { width:100%; appearance:none; height:2px; background:rgba(255,255,255,0.1); outline:none; cursor:pointer; }
+  input[type=range]:disabled { cursor:not-allowed; opacity:0.3; }
+  input[type=range]::-webkit-slider-thumb { appearance:none; width:14px; height:14px; background:#f0c040; border-radius:50%; cursor:pointer; transition:transform 0.1s; }
+  input[type=range]::-webkit-slider-thumb:hover { transform:scale(1.3); }
+  .value-badge { font-size:12px; color:#f0c040; min-width:44px; text-align:right; }
+  .format-buttons { display:flex; gap:8px; flex:1; }
+  .fmt-btn {
+    padding:6px 14px; font-size:11px; font-family:'DM Mono',monospace; letter-spacing:0.05em;
+    background:transparent; border:1px solid rgba(255,255,255,0.1); color:#666; cursor:pointer; transition:all 0.15s;
+  }
+  .fmt-btn.active { background:#f0c040; border-color:#f0c040; color:#0a0a0a; }
+  .fmt-btn:hover:not(.active) { border-color:rgba(240,192,64,0.5); color:#f0c040; }
+  .ctrl-divider { border:none; border-top:1px solid rgba(255,255,255,0.05); margin:20px 0; }
+
+  /* Target size */
+  .target-toggle-row { display:flex; align-items:center; gap:12px; margin-bottom:14px; cursor:pointer; user-select:none; }
+  .toggle-switch { width:32px; height:18px; background:rgba(255,255,255,0.1); border-radius:9px; position:relative; transition:background 0.2s; flex-shrink:0; }
+  .toggle-switch.on { background:#f0c040; }
+  .toggle-switch::after { content:''; position:absolute; top:3px; left:3px; width:12px; height:12px; background:#0a0a0a; border-radius:50%; transition:transform 0.2s; }
+  .toggle-switch.on::after { transform:translateX(14px); }
+  .toggle-label { font-size:11px; color:#999; letter-spacing:0.05em; }
+  .target-input-row { display:flex; align-items:center; gap:16px; }
+  .target-input-group { display:flex; align-items:center; gap:8px; flex:1; }
+  .target-num-input {
+    background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
+    color:#e8e3d8; font-family:'DM Mono',monospace; font-size:13px;
+    padding:7px 12px; width:120px; outline:none; transition:border-color 0.15s;
+    -moz-appearance:textfield;
+  }
+  .target-num-input::-webkit-inner-spin-button,
+  .target-num-input::-webkit-outer-spin-button { -webkit-appearance:none; }
+  .target-num-input:focus { border-color:rgba(240,192,64,0.6); }
+  .target-num-input:disabled { opacity:0.3; cursor:not-allowed; }
+  .unit-buttons { display:flex; gap:4px; }
+  .unit-btn {
+    padding:6px 11px; font-size:10px; font-family:'DM Mono',monospace; letter-spacing:0.08em;
+    background:transparent; border:1px solid rgba(255,255,255,0.08); color:#555; cursor:pointer; transition:all 0.15s;
+  }
+  .unit-btn.active { background:rgba(240,192,64,0.15); border-color:rgba(240,192,64,0.4); color:#f0c040; }
+  .unit-btn:hover:not(.active):not(:disabled) { border-color:rgba(255,255,255,0.2); color:#888; }
+  .unit-btn:disabled { opacity:0.3; cursor:not-allowed; }
+  .target-hint { font-size:10px; color:#555; }
+
+  /* Estimate bar */
+  .estimate-bar {
+    background:rgba(240,192,64,0.04); border:1px solid rgba(240,192,64,0.12);
+    padding:14px 18px; margin-top:20px; display:flex; align-items:center; gap:24px; flex-wrap:wrap;
+  }
+  .estimate-label { font-size:9px; letter-spacing:0.2em; text-transform:uppercase; color:#555; flex-shrink:0; }
+  .estimate-values { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+  .est-item { display:flex; flex-direction:column; gap:2px; }
+  .est-key { font-size:9px; letter-spacing:0.15em; text-transform:uppercase; color:#444; }
+  .est-val { font-size:13px; }
+  .est-val.accent { color:#f0c040; }
+  .est-val.green { color:#5dde8a; }
+  .est-val.red { color:#e05555; }
+  .est-val.muted { color:#555; }
+  .est-arrow { color:#333; font-size:14px; }
+
+  /* Start button */
+  .start-section { margin-bottom:28px; }
+  .btn-start {
+    width:100%; padding:18px; font-family:'Syne',sans-serif; font-size:18px; font-weight:700;
+    letter-spacing:0.1em; background:#f0c040; color:#0a0a0a; border:none; cursor:pointer;
+    transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:12px;
+  }
+  .btn-start:hover:not(:disabled) { background:#ffd84d; transform:translateY(-2px); box-shadow:0 8px 32px rgba(240,192,64,0.25); }
+  .btn-start:disabled { opacity:0.35; cursor:not-allowed; transform:none; box-shadow:none; }
+  .btn-start.running { background:#1e1e0e; color:#f0c040; border:1px solid rgba(240,192,64,0.3); cursor:not-allowed; }
+  .start-hint { text-align:center; font-size:10px; color:#444; letter-spacing:0.08em; margin-top:10px; }
+
+  /* Progress bar */
+  .overall-progress { background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); padding:16px 20px; margin-bottom:28px; display:none; }
+  .overall-progress.visible { display:block; }
+  .op-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .op-label { font-size:10px; letter-spacing:0.15em; text-transform:uppercase; color:#666; }
+  .op-count { font-size:11px; color:#f0c040; }
+  .op-bar { height:3px; background:rgba(255,255,255,0.06); overflow:hidden; }
+  .op-fill { height:100%; background:linear-gradient(90deg,#f0c040,#ffd84d); transition:width 0.4s ease; width:0%; }
+
+  /* Results */
+  .results-section { display:none; }
+  .results-section.visible { display:block; }
+  .images-grid { display:flex; flex-direction:column; gap:16px; }
+  .image-card {
+    border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02);
+    padding:16px; animation:fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .card-inner { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:14px; }
+  .preview-pane {
+    position:relative; background:rgba(0,0,0,0.3); aspect-ratio:16/9;
+    overflow:hidden; display:flex; align-items:center; justify-content:center;
+  }
+  .preview-pane img { width:100%; height:100%; object-fit:contain; }
+  .pane-label {
+    position:absolute; top:8px; left:8px; font-size:9px; letter-spacing:0.15em; text-transform:uppercase;
+    background:rgba(0,0,0,0.7); color:#888; padding:3px 7px;
+  }
+  .card-status { padding:7px 10px; margin-bottom:10px; font-size:10px; letter-spacing:0.06em; }
+  .card-status.ok { border-left:2px solid rgba(93,222,138,0.4); color:#5dde8a; }
+  .card-status.over { border-left:2px solid rgba(224,85,85,0.4); color:#e05555; }
+  .card-meta { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .meta-stats { display:flex; gap:20px; flex-wrap:wrap; }
+  .stat { display:flex; flex-direction:column; gap:2px; }
+  .stat-key { font-size:9px; letter-spacing:0.15em; text-transform:uppercase; color:#555; }
+  .stat-val { font-size:13px; color:#e8e3d8; }
+  .stat-val.green { color:#5dde8a; }
+  .stat-val.yellow { color:#f0c040; }
+  .filename { font-size:11px; color:#555; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:220px; }
+  .btn-download {
+    display:flex; align-items:center; gap:6px; padding:8px 18px;
+    background:#f0c040; color:#0a0a0a; font-family:'DM Mono',monospace; font-size:11px;
+    letter-spacing:0.1em; border:none; cursor:pointer; transition:all 0.15s;
+  }
+  .btn-download:hover { background:#ffd84d; transform:translateY(-1px); }
+
+  .bottom-bar {
+    margin-top:28px; padding:18px 0; border-top:1px solid rgba(255,255,255,0.06);
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px;
+  }
+  .total-stats { font-size:11px; color:#555; }
+  .total-stats strong { color:#5dde8a; }
+  .btn-dl-all {
+    display:flex; align-items:center; gap:8px; padding:10px 24px;
+    background:transparent; border:1px solid rgba(240,192,64,0.4); color:#f0c040;
+    font-family:'DM Mono',monospace; font-size:11px; letter-spacing:0.1em; cursor:pointer; transition:all 0.15s;
+  }
+  .btn-dl-all:hover { background:rgba(240,192,64,0.08); border-color:#f0c040; }
+
+  .empty-state { text-align:center; padding:40px; color:#333; font-size:12px; letter-spacing:0.1em; line-height:2; }
+
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .spinner { width:18px; height:18px; border:2px solid rgba(240,192,64,0.3); border-top-color:#f0c040; border-radius:50%; animation:spin 0.8s linear infinite; }
+
+  /* ── 響應式版面 ── */
+
+  /* 平板 (600px ~ 900px) */
+  @media(max-width:900px) {
+    .container { padding: 32px 20px; }
+    h1 { font-size: clamp(28px, 7vw, 48px); }
+  }
+
+  /* 手機 (< 600px) */
+  @media(max-width:600px) {
+    .container { padding: 20px 14px; }
+    h1 { font-size: 36px; }
+    .subtitle { font-size: 11px; }
+
+    /* 上傳區塊 */
+    .tab-btn { padding: 10px 14px; font-size: 10px; flex: 1; text-align: center; }
+    .drop-zone { padding: 32px 16px; }
+    .drop-icon { font-size: 28px; }
+    .drop-title { font-size: 14px; }
+    .url-input-row { flex-direction: column; }
+    .btn-secondary { width: 100%; }
+
+    /* 設定面板 */
+    .controls { padding: 16px; }
+    .control-row { flex-wrap: wrap; gap: 8px; }
+    .control-label { width: 100%; margin-bottom: 0; }
+    .slider-wrap { flex: 1; min-width: 0; }
+    .value-badge { min-width: 40px; }
+    .format-buttons { flex: 1 0 100%; }
+    .fmt-btn { flex: 1; text-align: center; padding: 8px 4px; }
+
+    /* 目標容量 */
+    .target-input-row { flex-wrap: wrap; gap: 10px; }
+    .target-input-group { flex-wrap: wrap; gap: 8px; }
+    .target-num-input { width: 100%; }
+    .unit-buttons { flex: 1; }
+    .unit-btn { flex: 1; text-align: center; }
+    .target-hint { width: 100%; }
+
+    /* 預估列 */
+    .estimate-bar { flex-direction: column; align-items: flex-start; gap: 10px; padding: 12px 14px; }
+    .estimate-values { gap: 12px; }
+
+    /* 佇列 */
+    .queue-remove { padding: 6px 10px; }
+
+    /* 開始按鈕 */
+    .btn-start { font-size: 15px; padding: 16px; }
+
+    /* 結果卡片：上下排列 */
+    .card-inner { grid-template-columns: 1fr; }
+    .card-meta { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .btn-download { width: 100%; justify-content: center; padding: 12px; }
+    .meta-stats { gap: 12px; flex-wrap: wrap; }
+
+    /* 底部列 */
+    .bottom-bar { flex-direction: column; align-items: stretch; }
+    .btn-dl-all { width: 100%; justify-content: center; padding: 12px; }
+  }
+
+  /* 超小手機 (< 380px) */
+  @media(max-width:380px) {
+    h1 { font-size: 30px; }
+    .meta-stats { gap: 8px; }
+    .stat-val { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="bg-grid"></div>
+<div class="bg-glow"></div>
+
+<div class="container">
+  <div class="header">
+    <div class="label-tag"><div class="dot"></div>影像壓縮工具</div>
+    <h1>IMAGE<br><span>COMPRESSOR</span></h1>
+    <p class="subtitle">// 在瀏覽器本地壓縮，無需上傳至伺服器</p>
+  </div>
+
+  <!-- Upload Area -->
+  <div class="upload-area">
+    <div class="input-tabs">
+      <button class="tab-btn active" onclick="switchTab('upload')">上傳檔案</button>
+      <button class="tab-btn" onclick="switchTab('url')">貼上圖片網址</button>
+    </div>
+
+    <div id="tab-upload" class="tab-content active">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept="image/*" multiple />
+        <span class="drop-icon">⬡</span>
+        <div class="drop-title">拖拉圖片至此，或點擊選取</div>
+        <div class="drop-sub">支援 JPG · PNG · WEBP · GIF · BMP · 可多選</div>
+      </div>
+    </div>
+
+    <div id="tab-url" class="tab-content">
+      <div class="url-note">
+        貼上任何公開圖片網址（需支援 CORS）。可用
+        <a href="https://unsplash.com" target="_blank">Unsplash</a>
+        或下方示範圖片快速測試。
+      </div>
+      <div class="url-input-row">
+        <input class="url-input" id="urlInput" placeholder="https://example.com/photo.jpg" />
+        <button class="btn-secondary" id="btnAddUrl" onclick="addFromUrl()">加入佇列</button>
+      </div>
+      <div id="urlError" class="url-error" style="display:none"></div>
+      <div class="demo-row">
+        <span class="demo-label">示範圖片：</span>
+        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200&q=90','風景.jpg',0)">風景</button>
+        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1200&q=90','城市.jpg',0)">城市</button>
+        <button class="demo-chip" onclick="addDemoUrl('https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=1200&q=90','人像.jpg',0)">人像</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Queue -->
+  <div class="queue-section" id="queueSection">
+    <div class="section-title">// 待處理佇列（<span id="queueCount">0</span> 張）</div>
+    <div class="queue-list" id="queueList"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="controls-title">// 壓縮設定</div>
+    <div class="control-row" id="qualityRow">
+      <span class="control-label">畫質</span>
+      <div class="slider-wrap">
+        <input type="range" id="quality" min="10" max="100" step="1" value="80" oninput="onQualityChange()" />
+      </div>
+      <span class="value-badge" id="qualityVal">80%</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">最大寬度</span>
+      <div class="slider-wrap">
+        <input type="range" id="maxWidth" min="0" max="4000" step="100" value="0" oninput="onMaxWidthChange()" />
+      </div>
+      <span class="value-badge" id="maxWidthVal">原始</span>
+    </div>
+    <div class="control-row">
+      <span class="control-label">輸出格式</span>
+      <div class="format-buttons">
+        <button class="fmt-btn active" id="fmt-jpeg" onclick="setFormat('image/jpeg','fmt-jpeg')">JPG</button>
+        <button class="fmt-btn" id="fmt-png" onclick="setFormat('image/png','fmt-png')">PNG</button>
+        <button class="fmt-btn" id="fmt-webp" onclick="setFormat('image/webp','fmt-webp')">WEBP</button>
+      </div>
+    </div>
+    <hr class="ctrl-divider" />
+    <div class="target-toggle-row" onclick="toggleTarget()">
+      <div class="toggle-switch" id="toggleSwitch"></div>
+      <span class="toggle-label">指定輸出容量（自動搜尋最佳畫質）</span>
+    </div>
+    <div class="target-input-row">
+      <span class="control-label" id="targetLabel" style="opacity:0.35">目標大小</span>
+      <div class="target-input-group">
+        <input type="number" class="target-num-input" id="targetValue" placeholder="例：500" disabled min="1" oninput="onTargetChange()" />
+        <div class="unit-buttons">
+          <button class="unit-btn active" id="unit-KB" disabled onclick="setUnit('KB')" >KB</button>
+          <button class="unit-btn" id="unit-MB" disabled onclick="setUnit('MB')">MB</button>
+        </div>
+        <span class="target-hint" id="targetHint" style="opacity:0.35">開啟後可輸入目標大小</span>
+      </div>
+    </div>
+
+    <!-- Estimate bar -->
+    <div class="estimate-bar" id="estimateBar" style="display:none">
+      <span class="estimate-label">預估輸出</span>
+      <div class="estimate-values">
+        <div class="est-item"><span class="est-key">原始總計</span><span class="est-val muted" id="estOriginal">—</span></div>
+        <span class="est-arrow">→</span>
+        <div class="est-item"><span class="est-key">預估輸出</span><span class="est-val accent" id="estOutput">—</span></div>
+        <div class="est-item" id="estSavingWrap"><span class="est-key">預估節省</span><span class="est-val" id="estSaving">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Start Button -->
+  <div class="start-section">
+    <button class="btn-start" id="btnStart" disabled onclick="handleStart()">▶ 開始壓縮</button>
+    <div class="start-hint" id="startHint">請先從上方加入圖片</div>
+  </div>
+
+  <!-- Overall progress -->
+  <div class="overall-progress" id="overallProgress">
+    <div class="op-header">
+      <span class="op-label">整體進度</span>
+      <span class="op-count" id="opCount">0 / 0</span>
+    </div>
+    <div class="op-bar"><div class="op-fill" id="opFill"></div></div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="resultsSection">
+    <div class="section-title" style="margin-bottom:16px">// 壓縮結果</div>
+    <div class="images-grid" id="imagesGrid"></div>
+    <div class="bottom-bar" id="bottomBar" style="display:none">
+      <div class="total-stats" id="totalStats"></div>
+      <button class="btn-dl-all" onclick="downloadAll()">↓ 全部下載</button>
+    </div>
+  </div>
+
+  <div class="empty-state" id="emptyState">尚未加入任何圖片</div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+let queue = [];        // { id, file, sourceUrl, name, originalSize }
+let results = [];      // { id, name, originalUrl, originalSize, compressedBlob, compressedUrl, compressedSize, width, height }
+let format = 'image/jpeg';
+let targetEnabled = false;
+let targetUnit = 'KB';
+let running = false;
+let estimateTimer = null;
+
+// ── Helpers ────────────────────────────────────────────
+function formatBytes(b) {
+  if (!b || b === 0) return '0 B';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(2) + ' MB';
+}
+function getFormatExt() {
+  return format === 'image/png' ? 'png' : format === 'image/webp' ? 'webp' : 'jpg';
+}
+function getTargetBytes() {
+  const v = parseFloat(document.getElementById('targetValue').value);
+  if (!v || v <= 0) return null;
+  return targetUnit === 'MB' ? v * 1048576 : v * 1024;
+}
+function uid() { return Math.random().toString(36).slice(2); }
+
+// ── Tab switch ─────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', (i===0 && tab==='upload') || (i===1 && tab==='url'));
+  });
+  document.getElementById('tab-upload').classList.toggle('active', tab==='upload');
+  document.getElementById('tab-url').classList.toggle('active', tab==='url');
+}
+
+// ── File input / drop ──────────────────────────────────
+document.getElementById('fileInput').addEventListener('change', e => {
+  Array.from(e.target.files).forEach(addFile);
+  e.target.value = '';
+});
+
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragging'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragging');
+  Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')).forEach(addFile);
+});
+
+function addFile(file) {
+  const sourceUrl = URL.createObjectURL(file);
+  addToQueue({ id: uid(), sourceUrl, name: file.name, originalSize: file.size });
+}
+
+// ── URL input ──────────────────────────────────────────
+document.getElementById('urlInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addFromUrl();
+});
+
+async function addFromUrl() {
+  const url = document.getElementById('urlInput').value.trim();
+  if (!url) return;
+  const btn = document.getElementById('btnAddUrl');
+  const errEl = document.getElementById('urlError');
+  errEl.style.display = 'none';
+  btn.textContent = '載入…'; btn.disabled = true;
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    if (!blob.type.startsWith('image/')) throw new Error('非圖片');
+    const sourceUrl = URL.createObjectURL(blob);
+    const name = url.split('/').pop().split('?')[0] || 'image.jpg';
+    addToQueue({ id: uid(), sourceUrl, name, originalSize: blob.size });
+    document.getElementById('urlInput').value = '';
+  } catch {
+    errEl.textContent = '⚠ 無法載入圖片，請確認網址正確且允許跨域存取（CORS）';
+    errEl.style.display = 'block';
+  }
+  btn.textContent = '加入佇列'; btn.disabled = false;
+}
+
+async function addDemoUrl(url, name) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const sourceUrl = URL.createObjectURL(blob);
+    addToQueue({ id: uid(), sourceUrl, name, originalSize: blob.size });
+  } catch {
+    alert('示範圖片載入失敗，請確認網路連線');
+  }
+}
+
+// ── Queue management ───────────────────────────────────
+function addToQueue(item) {
+  queue.push(item);
+  renderQueue();
+  updateStartBtn();
+  scheduleEstimate();
+}
+
+function removeFromQueue(id) {
+  queue = queue.filter(i => i.id !== id);
+  renderQueue();
+  updateStartBtn();
+  scheduleEstimate();
+}
+
+function renderQueue() {
+  const section = document.getElementById('queueSection');
+  const list = document.getElementById('queueList');
+  document.getElementById('queueCount').textContent = queue.length;
+  if (queue.length === 0) { section.classList.remove('visible'); return; }
+  section.classList.add('visible');
+  list.innerHTML = queue.map(item => `
+    <div class="queue-item" id="qi-${item.id}">
+      <img class="queue-thumb" src="${item.sourceUrl}" alt="${item.name}" />
+      <div class="queue-info">
+        <div class="queue-name">${item.name}</div>
+        <div class="queue-size">${formatBytes(item.originalSize)}</div>
+      </div>
+      <button class="queue-remove" onclick="removeFromQueue('${item.id}')">✕ 移除</button>
+    </div>
+  `).join('');
+}
+
+// ── Controls ───────────────────────────────────────────
+function onQualityChange() {
+  const v = document.getElementById('quality').value;
+  document.getElementById('qualityVal').textContent = v + '%';
+  scheduleEstimate();
+}
+function onMaxWidthChange() {
+  const v = +document.getElementById('maxWidth').value;
+  document.getElementById('maxWidthVal').textContent = v === 0 ? '原始' : v + 'px';
+  scheduleEstimate();
+}
+function setFormat(f, btnId) {
+  format = f;
+  document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(btnId).classList.add('active');
+  scheduleEstimate();
+}
+function toggleTarget() {
+  targetEnabled = !targetEnabled;
+  document.getElementById('toggleSwitch').classList.toggle('on', targetEnabled);
+  document.getElementById('targetLabel').style.opacity = targetEnabled ? '1' : '0.35';
+  document.getElementById('targetValue').disabled = !targetEnabled;
+  document.getElementById('unit-KB').disabled = !targetEnabled;
+  document.getElementById('unit-MB').disabled = !targetEnabled;
+  document.getElementById('quality').disabled = targetEnabled;
+  document.getElementById('qualityRow').style.opacity = targetEnabled ? '0.3' : '1';
+  document.getElementById('qualityRow').style.pointerEvents = targetEnabled ? 'none' : '';
+  onTargetChange();
+}
+function setUnit(u) {
+  targetUnit = u;
+  document.getElementById('unit-KB').classList.toggle('active', u === 'KB');
+  document.getElementById('unit-MB').classList.toggle('active', u === 'MB');
+  onTargetChange();
+}
+function onTargetChange() {
+  const tb = getTargetBytes();
+  const hint = document.getElementById('targetHint');
+  if (targetEnabled && tb) {
+    hint.textContent = `= ${formatBytes(tb)} / 張`;
+    hint.style.opacity = '1';
+  } else {
+    hint.textContent = targetEnabled ? '請輸入目標大小' : '開啟後可輸入目標大小';
+    hint.style.opacity = '0.35';
+  }
+  updateEstimateBar();
+}
+
+// ── Estimate ───────────────────────────────────────────
+function scheduleEstimate() {
+  clearTimeout(estimateTimer);
+  if (targetEnabled || queue.length === 0) { updateEstimateBar(); return; }
+  estimateTimer = setTimeout(runEstimate, 450);
+}
+
+async function runEstimate() {
+  if (!queue.length || targetEnabled) return;
+  const sample = queue[0];
+  try {
+    const quality = +document.getElementById('quality').value;
+    const maxWidth = +document.getElementById('maxWidth').value;
+    const result = await compressImage(sample.sourceUrl, quality, format, maxWidth);
+    const ratio = result.blob.size / sample.originalSize;
+    const totalEst = queue.reduce((s, i) => s + i.originalSize * ratio, 0);
+    const totalOrig = queue.reduce((s, i) => s + i.originalSize, 0);
+    showEstimate(totalOrig, totalEst);
+  } catch {}
+}
+
+function updateEstimateBar() {
+  const bar = document.getElementById('estimateBar');
+  const tb = getTargetBytes();
+  if (queue.length === 0) { bar.style.display = 'none'; return; }
+  if (targetEnabled && tb) {
+    const totalOrig = queue.reduce((s,i)=>s+i.originalSize,0);
+    showEstimate(totalOrig, tb * queue.length);
+  } else if (!targetEnabled) {
+    // will be updated by runEstimate
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function showEstimate(totalOrig, totalEst) {
+  const bar = document.getElementById('estimateBar');
+  bar.style.display = 'flex';
+  document.getElementById('estOriginal').textContent = formatBytes(totalOrig);
+  document.getElementById('estOutput').textContent = formatBytes(totalEst);
+  const pct = Math.round((1 - totalEst / totalOrig) * 100);
+  const savEl = document.getElementById('estSaving');
+  savEl.textContent = pct > 0 ? `-${pct}%` : `+${Math.abs(pct)}%`;
+  savEl.className = 'est-val ' + (pct > 0 ? 'green' : 'red');
+}
+
+// ── Compression ────────────────────────────────────────
+function loadImg(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function canvasCompress(img, quality, fmt, maxWidth) {
+  return new Promise(resolve => {
+    const canvas = document.createElement('canvas');
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if (maxWidth && w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (fmt === 'image/jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); }
+    ctx.drawImage(img, 0, 0, w, h);
+    canvas.toBlob(blob => resolve({ blob, width: w, height: h }), fmt, quality/100);
+  });
+}
+
+async function compressImage(sourceUrl, quality, fmt, maxWidth) {
+  const img = await loadImg(sourceUrl);
+  return canvasCompress(img, quality, fmt, maxWidth);
+}
+
+async function compressToTarget(sourceUrl, targetBytes, fmt, maxWidth) {
+  const img = await loadImg(sourceUrl);
+  let lo = 5, hi = 95, best = null;
+  for (let i = 0; i < 9; i++) {
+    const mid = Math.round((lo+hi)/2);
+    const r = await canvasCompress(img, mid, fmt, maxWidth);
+    if (!best || Math.abs(r.blob.size - targetBytes) < Math.abs(best.blob.size - targetBytes)) best = r;
+    if (r.blob.size > targetBytes) hi = mid-1; else lo = mid+1;
+    if (lo > hi) break;
+  }
+  return best;
+}
+
+// ── Start ──────────────────────────────────────────────
+function updateStartBtn() {
+  const btn = document.getElementById('btnStart');
+  const hint = document.getElementById('startHint');
+  btn.disabled = queue.length === 0 || running;
+  if (running) {
+    hint.textContent = '處理中，請稍候…';
+  } else if (queue.length === 0) {
+    hint.textContent = '請先從上方加入圖片';
+  } else {
+    hint.textContent = `共 ${queue.length} 張，設定完成後按下「開始壓縮」`;
+  }
+}
+
+async function handleStart() {
+  if (!queue.length || running) return;
+  running = true;
+  results = [];
+  document.getElementById('imagesGrid').innerHTML = '';
+  document.getElementById('bottomBar').style.display = 'none';
+  document.getElementById('resultsSection').classList.add('visible');
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('overallProgress').classList.add('visible');
+
+  const btn = document.getElementById('btnStart');
+  btn.disabled = true;
+  btn.classList.add('running');
+  btn.innerHTML = '<div class="spinner"></div> 壓縮中… 0 / ' + queue.length;
+  updateStartBtn();
+
+  const tb = getTargetBytes();
+  const quality = +document.getElementById('quality').value;
+  const maxWidth = +document.getElementById('maxWidth').value;
+  const total = queue.length;
+
+  for (let i = 0; i < total; i++) {
+    const item = queue[i];
+    // update progress
+    document.getElementById('opCount').textContent = `${i} / ${total}`;
+    document.getElementById('opFill').style.width = `${(i/total)*100}%`;
+    btn.innerHTML = `<div class="spinner"></div> 壓縮中… ${i+1} / ${total}`;
+
+    const result = tb
+      ? await compressToTarget(item.sourceUrl, tb, format, maxWidth)
+      : await compressImage(item.sourceUrl, quality, format, maxWidth);
+
+    const compressedUrl = URL.createObjectURL(result.blob);
+    const entry = {
+      id: item.id, name: item.name,
+      originalUrl: item.sourceUrl, originalSize: item.originalSize,
+      compressedBlob: result.blob, compressedUrl,
+      compressedSize: result.blob.size, width: result.width, height: result.height
+    };
+    results.push(entry);
+    appendResultCard(entry);
+
+    document.getElementById('opCount').textContent = `${i+1} / ${total}`;
+    document.getElementById('opFill').style.width = `${((i+1)/total)*100}%`;
+  }
+
+  // Done
+  running = false;
+  btn.classList.remove('running');
+  btn.innerHTML = '✓ 壓縮完成';
+  btn.disabled = false;
+  document.getElementById('overallProgress').classList.remove('visible');
+  renderBottomBar();
+  updateStartBtn();
+}
+
+function appendResultCard(item) {
+  const tb = getTargetBytes();
+  const saving = Math.round((1 - item.compressedSize / item.originalSize) * 100);
+  const overTarget = targetEnabled && tb && item.compressedSize > tb * 1.08;
+  const savingColor = saving >= 40 ? 'green' : saving >= 15 ? 'yellow' : '';
+  const ext = getFormatExt().toUpperCase();
+
+  let statusHtml = '';
+  if (targetEnabled && tb) {
+    statusHtml = `<div class="card-status ${overTarget ? 'over' : 'ok'}">
+      ${overTarget
+        ? `⚠ 無法達到目標，輸出 ${formatBytes(item.compressedSize)}`
+        : `✓ 輸出 ${formatBytes(item.compressedSize)}，目標 ${formatBytes(tb)}`}
+    </div>`;
+  }
+
+  const card = document.createElement('div');
+  card.className = 'image-card';
+  card.id = 'card-' + item.id;
+  card.innerHTML = `
+    <div class="card-inner">
+      <div class="preview-pane">
+        <img src="${item.originalUrl}" alt="原始" />
+        <div class="pane-label">原始</div>
+      </div>
+      <div class="preview-pane">
+        <img src="${item.compressedUrl}" alt="壓縮後" />
+        <div class="pane-label">${ext}</div>
+      </div>
+    </div>
+    ${statusHtml}
+    <div class="card-meta">
+      <div>
+        <div class="filename">${item.name}</div>
+        <div class="meta-stats">
+          <div class="stat"><span class="stat-key">原始大小</span><span class="stat-val">${formatBytes(item.originalSize)}</span></div>
+          <div class="stat"><span class="stat-key">壓縮後</span><span class="stat-val">${formatBytes(item.compressedSize)}</span></div>
+          <div class="stat"><span class="stat-key">節省</span><span class="stat-val ${savingColor}">${saving > 0 ? '-'+saving+'%' : '+'+Math.abs(saving)+'%'}</span></div>
+          <div class="stat"><span class="stat-key">尺寸</span><span class="stat-val">${item.width}×${item.height}</span></div>
+        </div>
+      </div>
+      <button class="btn-download" onclick="downloadItem('${item.id}')">↓ 下載</button>
+    </div>
+  `;
+  document.getElementById('imagesGrid').appendChild(card);
+}
+
+function renderBottomBar() {
+  if (!results.length) return;
+  const totalOrig = results.reduce((s,i)=>s+i.originalSize,0);
+  const totalComp = results.reduce((s,i)=>s+i.compressedSize,0);
+  const pct = Math.round((1-totalComp/totalOrig)*100);
+  document.getElementById('totalStats').innerHTML =
+    `共 ${results.length} 張 · ${formatBytes(totalOrig)} → ${formatBytes(totalComp)} · 節省 <strong>${pct}%</strong>`;
+  document.getElementById('bottomBar').style.display = 'flex';
+}
+
+function downloadItem(id) {
+  const item = results.find(r => r.id === id);
+  if (!item) return;
+  const a = document.createElement('a');
+  a.href = item.compressedUrl;
+  a.download = item.name.replace(/\.[^.]+$/, '') + '_compressed.' + getFormatExt();
+  a.click();
+}
+
+function downloadAll() {
+  results.forEach(item => downloadItem(item.id));
+}
+</script>
+</body>
+</html>
